@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+    <style>
+      body {
+        height: 100vh;
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(to top right, #a8edea, #fed6e3);
+        font-family: sans-serif;
+        text-align: center;
+        color: #333;
+        text-shadow: 1px 1px 2px #fff;
+      }
+      #bin {
+        position: fixed;
+        bottom: 30px;
+        right: 30px;
+        font-size: 40px;
+        transition: transform 0.3s;
+      }
+
+      .trash {
+        position: absolute;
+        width: 50px;
+        height: 50px;
+        font-size: 30px;
+        cursor: pointer;
+        transition: transform 0.3s ease, top 0.5s ease, left 0.5s ease;
+      }
+      #message,
+      #level,
+      #collected {
+        background: rgba(255, 255, 255, 0.7);
+        padding: 10px 20px;
+        border-radius: 10px;
+        font-size: 18px;
+        font-weight: bold;
+      }
+      #topBar {
+        position: fixed;
+        top: 10px;
+        left: 50%;
+        transform: translateX(-50%);
+        display: flex;
+        gap: 20px; /* فاصله بین Score و Level */
+      }
+      #winMessage {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        font-size: 36px;
+        font-weight: bold;
+        background: linear-gradient(
+          135deg,
+          #ffd700,
+          #ff8c00
+        ); /* گرادینت جذاب */
+        color: #fff;
+        padding: 30px 60px;
+        border-radius: 20px;
+        display: none;
+        text-align: center;
+        z-index: 1000;
+        box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+        animation: popUp 0.6s ease forwards; /* انیمیشن قبلی */
+      }
+      #winMessage.show {
+        display: block;
+        animation: popUp 0.6s ease forwards,
+          winTextEffect 1.5s ease infinite alternate;
+      }
+      @keyframes winTextEffect {
+        0% {
+          transform: translate(-50%, -50%) rotate(0deg);
+          color: #fff;
+        }
+        50% {
+          transform: translate(-50%, -50%) rotate(10deg);
+          color: #ff0;
+        }
+        100% {
+          transform: translate(-50%, -50%) rotate(-10deg);
+          color: #ff4500;
+        }
+      }
+      #faildMessage {
+        display: none;
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background-color: rgba(255, 0, 0, 0.8);
+        color: white;
+        padding: 30px 50px;
+        border-radius: 15px;
+        font-size: 32px;
+        font-weight: bold;
+        text-align: center;
+        box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+        z-index: 999;
+        animation: fadeIn 1s ease forwards;
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      }
+
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translate(-50%, -60%);
+        }
+        to {
+          opacity: 1;
+          transform: translate(-50%, -50%);
+        }
+      }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@tsparticles/confetti@3.0.3/tsparticles.confetti.bundle.min.js"></script>
+  </head>
+  <body>
+    <h1 id="gameTitle">Clean The Park 🌳🗑️</h1>
+
+    <div id="bin">🗑️</div>
+    <div id="topBar">
+      <div id="message"></div>
+      <div id="level"></div>
+      <div id="collected">Collected : 0 / 3</div>
+    </div>
+
+    <div id="winMessage"></div>
+    <div id="faildMessage"></div>
+    <div id="timer"></div>
+
+    <script>
+      const bgMusic = new Audio("sounds/bg music.mp3");
+
+      let level = 1;
+      let trashCount = 3;
+      let score = 0;
+      let recycled = 0;
+      const trashTypes = ["🍌", "💀", "🤡", "🐒", "🐙", "🦴", "🕷"];
+      let speedFactor = 1;
+      let timer;
+
+      const bin = document.getElementById("bin");
+      const message = document.getElementById("message");
+      const gameLevel = document.getElementById("level");
+
+      let draggedTrash = null;
+
+      function createTrash(num) {
+        for (let i = 0; i < num; i++) {
+          const trash = document.createElement("div");
+          trash.draggable = true;
+          trash.classList.add("trash");
+          const randomIndex = Math.floor(Math.random() * trashTypes.length);
+          trash.textContent = trashTypes[randomIndex];
+
+          const divWidth = 50;
+          const divHeight = 50;
+
+          let x = Math.random() * (window.innerWidth - divWidth);
+          let y = Math.random() * (window.innerHeight - divHeight);
+
+          trash.style.left = x + "px";
+          trash.style.top = y + "px";
+
+          document.body.appendChild(trash);
+
+          trash.addEventListener("mousemove", () => {
+            trash.style.transform = "scale(1.2 , 1.2)";
+          });
+          trash.addEventListener("mouseleave", () => {
+            trash.style.transform = "scale(1, 1)";
+          });
+          const selectSound = new Audio("sounds/select.mp3");
+
+          trash.addEventListener("mousedown", () => {
+            selectSound.currentTime = 0;
+            selectSound.play();
+          });
+
+          trash.addEventListener("dragstart", function () {
+            draggedTrash = this;
+          });
+        }
+      }
+
+      document.addEventListener("mousemove", (e) => {
+        const mouseX = e.clientX;
+        const mouseY = e.clientY;
+
+        document.querySelectorAll(".trash").forEach((trash) => {
+          const trashX = trash.offsetLeft + trash.offsetWidth / 2;
+          const trashY = trash.offsetTop + trash.offsetHeight / 2;
+
+          const distance = Math.sqrt(
+            (mouseX - trashX) ** 2 + (mouseY - trashY) ** 2
+          );
+
+          if (distance < 80) {
+            let dx = trashX - mouseX;
+            let dy = trashY - mouseY;
+
+            const moveX = (dx / distance) * (5 + Math.random() * speedFactor);
+            const moveY = (dy / distance) * (5 + Math.random() * speedFactor);
+
+            const minX = 0;
+            const maxX = window.innerWidth - trash.offsetWidth;
+            const minY = 0;
+            const maxY = window.innerHeight - trash.offsetHeight;
+
+            let newLeft = trash.offsetLeft + moveX;
+            let newTop = trash.offsetTop + moveY;
+
+            newLeft = Math.max(minX, Math.min(maxX, newLeft));
+            newTop = Math.max(minY, Math.min(maxY, newTop));
+
+            trash.style.left = newLeft + "px";
+            trash.style.top = newTop + "px";
+          }
+        });
+      });
+
+      const trashsound = new Audio("sounds/pop.mp3");
+
+      bin.addEventListener("dragover", function (event) {
+        event.preventDefault();
+      });
+
+      const collectedDisplay = document.getElementById("collected");
+
+      bin.addEventListener("drop", function (event) {
+        event.preventDefault();
+        trashsound.currentTime = 0;
+        trashsound.play();
+        if (draggedTrash) {
+          draggedTrash.remove();
+
+          draggedTrash = null;
+        }
+        score++;
+        collectedDisplay.textContent = `Collected: ${score} / ${trashCount}`;
+
+        message.textContent = "Score : " + score;
+
+        gameLevel.textContent = `Level : ${level} / 5`;
+
+        if (score >= trashCount && level < 5) {
+          level++;
+          score = 0;
+          recycled = 0;
+          trashCount = 3 + (level - 1) * 2;
+          speedFactor += 0.5;
+          message.textContent = "Score : " + score;
+
+          gameLevel.textContent = `Level : ${level} / 5`;
+
+          collectedDisplay.textContent = `Collected: ${recycled} / ${trashCount}`;
+
+          createTrash(trashCount);
+          startTimer();
+        }
+        function LunchConfetti() {
+          confetti({
+            particleCount: 360,
+            spread: 70,
+            origin: "(y: 0.6}",
+          });
+        }
+
+        const winsound = new Audio("sounds/win game.mp3");
+
+        if (score >= trashCount && level === 5) {
+          const winMessage = document.getElementById("winMessage");
+          winMessage.style.display = "block";
+          winMessage.classList.add("show");
+          winsound.currentTime = 0;
+          winsound.play();
+          bgMusic.pause();
+          winMessage.innerHTML = `
+    🎉 Congratulations! You successfully cleaned the entire park through all 5 levels! 🎉
+    <br /><br />
+    <button onclick="restartGame()" style="
+      padding: 12px 30px;
+      font-size: 18px;
+      background-color: white;
+      color: green;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: bold;
+      box-shadow: 0 0 10px rgba(0,0,0,0.3);
+    ">
+      🔁 Restart Game
+    </button>
+  `;
+          document.body.style.background = "rgba(0,0,0,0.7)";
+          LunchConfetti();
+        }
+      });
+      message.textContent = "Score : " + score;
+
+      gameLevel.textContent = `Level : ${level} / 5`;
+
+      createTrash(3);
+      startTimer();
+
+      function startTimer() {
+        let baseTime = 8;
+        let timeLeft = baseTime + (level - 1) * 8;
+
+        const timerElement = document.getElementById("timer");
+        timerElement.textContent = `Time Left: ${timeLeft}s`;
+        clearInterval(timer);
+        timer = setInterval(() => {
+          timeLeft--;
+          timerElement.textContent = `Time Left: ${timeLeft}s`;
+
+          const failGame = new Audio("sounds/fail game.mp3");
+          if (timeLeft <= 0) {
+            clearInterval(timer);
+            document.querySelectorAll(".trash").forEach((trash) => {
+              trash.style.pointerEvents = "none";
+              trash.remove();
+              failGame.currentTime = 0;
+              failGame.play();
+            });
+            bgMusic.pause();
+
+            document.getElementById("gameTitle").style.display = "none";
+
+            let faildMesage = document.getElementById("faildMessage");
+
+            faildMesage.innerHTML = `
+              ❌ Game Over! Try Again. ❌
+              <br /><br />
+              <button onclick="restartGame()" style="
+              padding: 12px 30px;
+              font-size: 18px;
+              background-color: white;
+              color: red;
+              border: none;
+              border-radius: 8px;
+              cursor: pointer;
+              font-weight: bold;
+              box-shadow: 0 0 10px rgba(0,0,0,0.3);
+             ">
+              🔁 Restart Game
+            </button>
+            `;
+            faildMesage.style.display = "block";
+          }
+        }, 1000);
+      }
+
+      function restartGame() {
+        document.querySelectorAll(".trash").forEach((t) => t.remove());
+
+        level = 1;
+        score = 0;
+        trashCount = 3;
+        recycled = 0;
+        speedFactor = 1;
+
+        document.getElementById("gameTitle").style.display = "block";
+
+        document.getElementById("faildMessage").style.display = "none";
+        document.getElementById("winMessage").style.display = "none";
+
+        message.textContent = "Score : " + score;
+        gameLevel.textContent = `Level : ${level} / 5`;
+        collectedDisplay.textContent = `Collected: 0 / ${trashCount}`;
+
+        document.body.style.background = "";
+        bgMusic.currentTime = 0;
+
+        createTrash(trashCount);
+        startTimer();
+      }
+      function tryPlayMusicOnce() {
+        bgMusic.loop = true;
+        bgMusic.volume =0.5;
+        bgMusic.play().catch((e) => {
+          console.log("Autoplay blocked:", e);
+        });
+        document.removeEventListener("click", tryPlayMusicOnce);
+      }
+
+      document.addEventListener("click", tryPlayMusicOnce);
+    </script>
+  </body>
+</html>
